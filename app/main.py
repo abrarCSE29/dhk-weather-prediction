@@ -29,7 +29,7 @@ state = {"model": None, "version": None, "training": False}
 limiter = Limiter(
     key_func=get_remote_address,
     headers_enabled=True,
-    default_limits=[os.getenv("RATE_DEFAULT", "10/minute")],
+    default_limits=[os.getenv("RATE_DEFAULT", "1000/minute")],
 )
 
 

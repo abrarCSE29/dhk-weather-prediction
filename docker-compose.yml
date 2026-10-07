@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       ADMIN_KEY: change-me
-      RATE_PREDICT: 20/minute
+      RATE_PREDICT: 1000/minute
     volumes:
       - mldata:/data
   mlflow:
