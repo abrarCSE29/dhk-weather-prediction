@@ -1,6 +1,54 @@
+import hashlib
+import json
+import logging
+import os
+from io import StringIO
+
 import numpy as np
 import pandas as pd
 import requests
+from dotenv import load_dotenv
+
+load_dotenv(".env.local")  # Load .env file if present
+
+# Uvicorn routes this logger to its configured console handler in local and Render runs.
+logger = logging.getLogger("uvicorn.error")
+
+_redis = None
+_redis_checked = False
+
+
+def _get_redis():
+    """Return the optional Upstash Redis client, initializing it once."""
+    global _redis, _redis_checked
+    if _redis_checked:
+        return _redis
+
+    _redis_checked = True
+    url = os.getenv("UPSTASH_REDIS_REST_URL")
+    token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+    if not url and not token:
+        logger.info("Upstash weather cache disabled: credentials are not configured")
+        return None
+    if not url or not token:
+        logger.warning("Upstash cache disabled: both URL and token must be configured")
+        return None
+
+    try:
+        from upstash_redis import Redis
+
+        _redis = Redis(url=url, token=token)
+        logger.info("Upstash weather cache client initialized")
+    except Exception:
+        logger.exception("Could not initialize Upstash cache; continuing without cache")
+    return _redis
+
+
+def _cache_key(url, params):
+    """Build a stable key without exposing request details in Redis keys."""
+    payload = json.dumps([url, params], sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(payload.encode()).hexdigest()
+    return f"dhk-weather-pred:weather:open-meteo:v1:{digest}"
 
 ARCHIVE = "https://archive-api.open-meteo.com/v1/era5"
 FORECAST = "https://api.open-meteo.com/v1/forecast"
@@ -32,27 +80,58 @@ FEATURES = [
 
 def fetch_daily(start, end):
     """Fetch Open-Meteo hourly data and aggregate it to daily weather values."""
+    start_date = pd.Timestamp(start).normalize()
+    end_date = pd.Timestamp(end).normalize()
     old = pd.Timestamp(end) <= pd.Timestamp.today().normalize() - pd.Timedelta(days=8)
     params = {
         "latitude": LAT,
         "longitude": LON,
-        "start_date": str(start)[:10],
-        "end_date": str(end)[:10],
         "hourly": HOURLY,
         "timezone": "Asia/Dhaka",
     }
-    if not old:
-        # The forecast endpoint only includes archived days when past_days is requested.
+    if old:
+        params["start_date"] = start_date.strftime("%Y-%m-%d")
+        params["end_date"] = end_date.strftime("%Y-%m-%d")
+    else:
+        # Open-Meteo forbids combining past_days with explicit start/end dates.
         params["past_days"] = 16
-    response = requests.get(
-        ARCHIVE if old else FORECAST,
-        timeout=60,
-        params=params,
-    )
+    url = ARCHIVE if old else FORECAST
+    cache = _get_redis()
+    cache_params = {
+        **params,
+        "requested_start_date": start_date.strftime("%Y-%m-%d"),
+        "requested_end_date": end_date.strftime("%Y-%m-%d"),
+    }
+    key = _cache_key(url, cache_params)
+    if cache:
+        try:
+            cached = cache.get(key)
+            if cached:
+                daily = pd.read_json(StringIO(cached), orient="records")
+                daily["time"] = pd.to_datetime(daily["time"])
+                logger.info(
+                    "Weather cache hit for %s through %s",
+                    start_date.date(),
+                    end_date.date(),
+                )
+                return daily
+            logger.info(
+                "Weather cache miss for %s through %s",
+                start_date.date(),
+                end_date.date(),
+            )
+        except Exception:
+            logger.warning("Upstash cache read failed; fetching weather from provider", exc_info=True)
+
+    response = requests.get(url, timeout=60, params=params)
     response.raise_for_status()
     hourly = pd.DataFrame(response.json()["hourly"])
     hourly["time"] = pd.to_datetime(hourly["time"])
-    return (
+    hourly = hourly[
+        (hourly["time"] >= start_date)
+        & (hourly["time"] < end_date + pd.Timedelta(days=1))
+    ]
+    daily = (
         hourly.set_index("time")
         .resample("D")
         .agg(
@@ -64,6 +143,19 @@ def fetch_daily(start, end):
         )
         .reset_index()
     )
+    if cache:
+        ttl = 30 * 24 * 60 * 60 if old else 15 * 60
+        try:
+            cache.set(key, daily.to_json(orient="records", date_format="iso"), ex=ttl)
+            logger.info(
+                "Weather data cached for %s through %s (TTL %s seconds)",
+                start_date.date(),
+                end_date.date(),
+                ttl,
+            )
+        except Exception:
+            logger.warning("Upstash cache write failed; returning provider response", exc_info=True)
+    return daily
 
 
 def build_features(daily):

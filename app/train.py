@@ -1,7 +1,5 @@
 import os
 
-from . import mlflow_config  # Configure Supabase/local MLflow before importing MLflow.
-
 import mlflow
 import mlflow.sklearn
 import numpy as np

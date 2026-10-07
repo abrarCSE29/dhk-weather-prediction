@@ -93,6 +93,9 @@ Status codes: 422 bad date, 429 rate limited, 502 weather provider down, 503 mod
 | `DATABASE_URI` | blank | Optional full SQLAlchemy URI; takes precedence over the split database fields |
 | `user`, `password`, `host`, `port`, `database` | blank | Supabase Postgres connection fields; use the Session pooler values for local IPv4 networks |
 | `S3_ENDPOINT`, `S3_REGION`, `BUCKET_NAME`, `ACCESS_KEY`, `SECRET_ACCESS_KEY` | blank | Supabase Storage S3 settings for model artifacts |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | blank | Optional Upstash Redis REST credentials; caches historical weather responses for 30 days and recent forecasts for 15 minutes |
+
+Set both Upstash variables in Render's service Environment settings (and in `.env.local` for local use) to enable the shared weather cache. If either value is missing, the app continues without caching. The Upstash Python REST client uses these two environment variables directly.
 
 ## Known limitations
 

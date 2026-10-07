@@ -3,3 +3,4 @@
 .env.local
 *_env
 mlartifacts
+app/__pycache__
