@@ -33,17 +33,21 @@ FEATURES = [
 def fetch_daily(start, end):
     """Fetch Open-Meteo hourly data and aggregate it to daily weather values."""
     old = pd.Timestamp(end) <= pd.Timestamp.today().normalize() - pd.Timedelta(days=8)
+    params = {
+        "latitude": LAT,
+        "longitude": LON,
+        "start_date": str(start)[:10],
+        "end_date": str(end)[:10],
+        "hourly": HOURLY,
+        "timezone": "Asia/Dhaka",
+    }
+    if not old:
+        # The forecast endpoint only includes archived days when past_days is requested.
+        params["past_days"] = 16
     response = requests.get(
         ARCHIVE if old else FORECAST,
         timeout=60,
-        params={
-            "latitude": LAT,
-            "longitude": LON,
-            "start_date": str(start)[:10],
-            "end_date": str(end)[:10],
-            "hourly": HOURLY,
-            "timezone": "Asia/Dhaka",
-        },
+        params=params,
     )
     response.raise_for_status()
     hourly = pd.DataFrame(response.json()["hourly"])

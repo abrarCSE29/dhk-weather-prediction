@@ -110,7 +110,8 @@ def predict(
             prediction_date - 15 * previous_day,
             prediction_date - previous_day,
         )
-    except requests.RequestException:
+    except requests.RequestException as exc:
+        logger.warning("Weather-provider request failed for %s: %s", date, exc)
         raise HTTPException(502, "Weather provider unavailable")
     features = build_features(daily).dropna().tail(1)
     if features.empty or features["time"].iloc[0] != prediction_date - previous_day:
