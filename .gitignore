@@ -1,0 +1,5 @@
+.kilo
+*.db
+.env.local
+*_env
+mlartifacts

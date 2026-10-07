@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dhaka Weather Forecast</title>
+    <style>
+      body {
+        max-width: 420px;
+        margin: 60px auto;
+        padding: 0 16px;
+        color: #222;
+        font-family: system-ui, sans-serif;
+      }
+
+      input,
+      button {
+        box-sizing: border-box;
+        width: 100%;
+        margin: 6px 0;
+        padding: 10px;
+        font-size: 16px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 6px;
+        background: #0b6cff;
+        color: #fff;
+        cursor: pointer;
+      }
+
+      #out {
+        margin: 20px 0 4px;
+        font-size: 34px;
+      }
+
+      #meta {
+        color: #666;
+        font-size: 13px;
+      }
+
+      .err {
+        color: #c00;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Dhaka max temperature</h2>
+    <label for="date">Pick a date</label>
+    <input type="date" id="date">
+    <button id="predict">Predict</button>
+    <div id="out"></div>
+    <div id="meta"></div>
+
+    <script>
+      const dateInput = document.getElementById("date");
+      const output = document.getElementById("out");
+      const metadata = document.getElementById("meta");
+      const predictButton = document.getElementById("predict");
+
+      dateInput.value = new Date().toISOString().slice(0, 10);
+      predictButton.addEventListener("click", predict);
+
+      async function predict() {
+        output.className = "";
+        output.style.fontSize = "34px";
+        output.textContent = "...";
+        metadata.textContent = "";
+
+        try {
+          const response = await fetch(
+            "/api/v1/predict?date=" + encodeURIComponent(dateInput.value),
+          );
+          const result = await response.json();
+
+          if (!response.ok) {
+            output.className = "err";
+            output.style.fontSize = "16px";
+            output.textContent = result.detail || "Error " + response.status;
+            return;
+          }
+
+          output.textContent = result.predicted_temp_max_c + " °C";
+          metadata.textContent =
+            "Model v" + result.model_version + " · API v" + result.api_version;
+        } catch (error) {
+          output.className = "err";
+          output.textContent = "Network error";
+        }
+      }
+    </script>
+  </body>
+</html>

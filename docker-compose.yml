@@ -1,0 +1,25 @@
+services:
+  api:
+    build: .
+    env_file:
+      - .env.local
+    ports:
+      - "8000:8000"
+    environment:
+      ADMIN_KEY: change-me
+      RATE_PREDICT: 20/minute
+    volumes:
+      - mldata:/data
+  mlflow:
+    build: .
+    env_file:
+      - .env.local
+    command: ["python", "-m", "app.mlflow_server"]
+    environment:
+      MLFLOW_UI_PORT: 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mldata:/data
+volumes:
+  mldata:
